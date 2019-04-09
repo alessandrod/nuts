@@ -1,7 +1,5 @@
 use nom::{be_u8, bits, call, cond, do_parse, length_bytes, rest, take, take_bits, tap, IResult};
-use std::io::{self, Cursor, Write};
-use crate::utils::{format_timestamp, parse_timestamp};
-use std::convert::From;
+use crate::utils::parse_timestamp;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -62,128 +60,6 @@ pub struct AdaptationField {
     // FIXME
     #[cfg_attr(test, proptest(value = "0u8"))]
     pub stuffing_length: u8,
-}
-
-
-impl AdaptationFieldExtension {
-    pub fn length(&self) -> u8 {
-        let mut len = 1;
-
-        if self.ltw.is_some() {
-            len += 2;
-        }
-
-        if self.piecewise_rate.is_some() {
-            len += 3;
-        }
-
-        if self.seamless_splice.is_some() {
-            len += 5;
-        }
-
-        if let Some(data) = self.data.as_ref() {
-            len += data.len() as u8;
-        }
-
-        len
-    }
-}
-
-impl AdaptationField {
-    pub fn length(&self) -> u8 {
-        let mut len = 1;
-
-        if self.program_clock_reference.is_some() {
-            len += 6;
-        }
-
-        if self.original_program_clock_reference.is_some() {
-            len += 6;
-        }
-
-        if self.splice_countdown.is_some() {
-            len += 1;
-        }
-
-        if let Some(data) = self.transport_private_data.as_ref() {
-            if data.len() > 0 {
-                len += data.len() as u8 + 1;
-            }
-        }
-
-        if let Some(ext) = self.extension.as_ref() {
-            len += ext.length() + 1;
-        }
-
-        len += self.stuffing_length;
-
-        len
-    }
-
-    pub fn write(&self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        let length = self.length();
-        buff.write(&[length])?;
-
-        buff.write(&[(self.discontinuity_indicator as u8) << 7
-            | (self.random_access_indicator as u8) << 6
-            | (self.elementary_stream_priority_indicator as u8) << 5
-            | (self.program_clock_reference.is_some() as u8) << 4
-            | (self.original_program_clock_reference.is_some() as u8) << 3
-            | (self.splice_countdown.is_some() as u8) << 2
-            | (self.transport_private_data.is_some() as u8) << 1
-            | self.extension.is_some() as u8])?;
-
-        if let Some(pcr) = self.program_clock_reference.as_ref() {
-            let tmp: u64 = pcr.base << 15 | (pcr.extension & 0x1FF) as u64;
-            buff.write(&tmp.to_be_bytes()[2..8])?;
-        }
-
-        if let Some(pcr) = self.original_program_clock_reference.as_ref() {
-            let tmp: u64 = pcr.base << 15 | (pcr.extension & 0x1FF) as u64;
-            buff.write(&tmp.to_be_bytes()[2..8])?;
-        }
-
-        if let Some(countdown) = self.splice_countdown {
-            buff.write(&[countdown])?;
-        }
-
-        if let Some(data) = self.transport_private_data.as_ref() {
-            buff.write(&[data.len() as u8])?;
-            buff.write(data)?;
-        }
-
-        if let Some(ext) = self.extension.as_ref() {
-            buff.write(&[ext.length()])?;
-            let tmp = (ext.ltw.is_some() as u8) << 7
-                | (ext.piecewise_rate.is_some() as u8) << 6
-                | (ext.seamless_splice.is_some() as u8) << 5;
-            buff.write(&[tmp])?;
-            if let Some(ltw) = ext.ltw.as_ref() {
-                let tmp = (ltw.valid as u16) << 15 | ltw.offset & 0x7FFF;
-                buff.write(&tmp.to_be_bytes())?;
-            }
-
-            if let Some(rate) = ext.piecewise_rate {
-                buff.write(&rate.to_be_bytes()[1..])?;
-            }
-            if let Some(splice) = ext.seamless_splice.as_ref() {
-                let tmp = (splice.splice_type as u64) << 36
-                    | format_timestamp(splice.dts_next_au);
-                buff.write(&tmp.to_be_bytes()[3..])?;
-            }
-            if let Some(data) = ext.data.as_ref() {
-                buff.write(data)?;
-            }
-        }
-
-        for _ in 0..self.stuffing_length {
-            buff.write(&[0xFF])?;
-        }
-
-        Ok(())
-    }
 }
 
 pub fn parse_adaptation_field(
@@ -347,14 +223,15 @@ fn piecewise_rate() -> impl Strategy<Value = Option<u32>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ts::writer;
 
     proptest! {
         #[test]
-        fn test_adaptation_field(mut af: AdaptationField) {
+        fn test_adaptation_field(af: AdaptationField) {
             let mut buf = Vec::new();
-            let len = af.length() as usize;
+            let len = writer::adaptation_field_len(&af) as usize;
             buf.resize(len + 1, 0);
-            af.write(&mut buf).unwrap();
+            writer::write_adaptation_field(&af, &mut buf).unwrap();
             assert_eq!(parse_adaptation_field(&buf), Ok((&buf[len + 1..], Some(af))))
         }
     }

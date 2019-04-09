@@ -40,7 +40,7 @@ impl Parser {
     }
 
     fn handle_pat(&mut self, pat: &PATSection) {
-        if let Some(active_pat) = self.active_pat.as_ref() {
+        if let Some(active_pat) = &self.active_pat {
             /* only process PAT updates, handling version_number wrap arounds */
             if pat.version_number <= active_pat.version_number && active_pat.version_number < 31 {
                 return;
@@ -124,6 +124,7 @@ impl Parser {
             assert!(payload_rest.len() == 0);
             return Ok((rest, (packet, Data::PES(pes_packet, payload))))
         }
+
         Ok((rest, (packet, Data::Data(payload))))
     }
 }

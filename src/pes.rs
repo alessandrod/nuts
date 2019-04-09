@@ -1,10 +1,11 @@
-use crate::utils::{format_timestamp, parse_timestamp};
+pub mod writer;
+
+use crate::utils::parse_timestamp;
 use nom::{
     be_u16, be_u8, bits, bytes, call, complete, cond, do_parse, length_bytes, map, map_res,
     rest, switch, tag, tag_bits, take, take_bits, tap, value, verify, IResult
 };
 use std::convert::{TryFrom, From};
-use std::io::{self, Cursor, Write};
 
 #[cfg(test)]
 use proptest::{collection, option, prelude::*};
@@ -240,314 +241,6 @@ impl Default for StreamId {
     }
 }
 
-impl Header {
-    pub fn length(&self) -> u8 {
-        3 + self.header_data_length()
-    }
-
-    fn header_data_length(&self) -> u8 {
-        let mut len = 0u8;
-
-        if self.pts.is_some() {
-            len += 5;
-        }
-
-        if self.dts.is_some() {
-            len += 5;
-        }
-
-        if self.escr.is_some() {
-            len += 6;
-        }
-
-        if self.es_rate.is_some() {
-            len += 3;
-        }
-
-        if self.trick_mode.is_some() {
-            len += 1;
-        }
-
-        if self.additional_copy_info.is_some() {
-            len += 1;
-        }
-
-        if self.previous_packet_crc.is_some() {
-            len += 2;
-        }
-
-        if let Some(ext) = self.extension.as_ref() {
-            len += ext.length();
-        }
-
-        len += self.stuffing_len;
-
-        len
-
-    }
-
-    fn write(&self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        let data = 1 << 7
-            | ((self.scrambling_control & 0x3) as u8) << 4
-            | (self.priority as u8) << 3
-            | (self.data_alignment_indicator as u8) << 2
-            | (self.copyright as u8) << 1
-            | self.original_or_copy as u8;
-        buff.write(&[data])?;
-
-        let data = (self.pts.is_some() as u8) << 7
-            | (self.dts.is_some() as u8) << 6
-            | (self.escr.is_some() as u8) << 5
-            | (self.es_rate.is_some() as u8) << 4
-            | (self.trick_mode.is_some() as u8) << 3
-            | (self.additional_copy_info.is_some() as u8) << 2
-            | (self.previous_packet_crc.is_some() as u8) << 1
-            | self.extension.is_some() as u8;
-
-        buff.write(&[data])?;
-
-        buff.write(&[self.header_data_length() as u8])?;
-
-        match (self.pts.as_ref(), self.dts.as_ref()) {
-            (Some(pts), None) => {
-                let data = 2 << 36
-                    | format_timestamp(*pts);
-                buff.write(&data.to_be_bytes()[3..])?;
-            },
-            (Some(pts), Some(dts)) => {
-                let data = 3 << 36
-                    | format_timestamp(*pts);
-                buff.write(&data.to_be_bytes()[3..])?;
-                let data = 1 << 36
-                    | format_timestamp(*dts);
-                buff.write(&data.to_be_bytes()[3..])?;
-            },
-            (None, None) => {
-
-            },
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid pts/dts"))
-        }
-
-        if let Some(escr) = self.escr.as_ref() {
-            let data = format_timestamp(escr.base) << 10
-                | ((escr.extension & 0x1FF) as u64) << 1
-                | 1;
-            buff.write(&data.to_be_bytes()[2..])?;
-        }
-
-        if let Some(es_rate) = self.es_rate.as_ref() {
-            let data = 1u32 << 23
-                | (es_rate & 0x3FFFFF) << 1
-                | 1;
-            buff.write(&data.to_be_bytes()[1..])?;
-        }
-
-        if let Some(tm) = self.trick_mode.as_ref() {
-            use TrickMode::*;
-
-            let data: u8 = match tm {
-                FastForward(id, refresh, truncation) => {
-                    (id & 0x3) << 3
-                    | (*refresh as u8) << 2
-                    | truncation & 0x3
-                },
-                SlowMotion(control) => {
-                    1 << 5 | control & 0x1F
-                },
-                FreezeFrame(id) => {
-                    2 << 5 | (id & 0x3) << 3
-                },
-                FastReverse(id, refresh, truncation) => {
-                    3 << 5
-                    | (id & 0x3) << 3
-                    | (*refresh as u8) << 2
-                    | truncation & 0x3
-                },
-                SlowReverse(control) => {
-                    4 << 5 | control & 0x1F
-                },
-                Reserved(data) => {
-                    *data
-                }
-            };
-
-            buff.write(&[data])?;
-        }
-
-        if let Some(ci) = self.additional_copy_info.as_ref() {
-            let data = 1 << 7 | ci & 0x7F;
-            buff.write(&[data])?;
-        }
-
-        if let Some(crc) = self.previous_packet_crc.as_ref() {
-            buff.write(&crc.to_be_bytes())?;
-        }
-
-        if let Some(ext) = self.extension.as_ref() {
-            let pos = buff.position() as usize;
-            ext.write(&mut buff.get_mut()[pos..])?;
-        }
-
-        Ok(())
-    }
-}
-
-impl HeaderExtension {
-    fn length(&self) -> u8 {
-        let mut len = 1u8;
-
-        if self.private_data.is_some() {
-            len += 16;
-        }
-
-        if let Some(pack_header) = self.pack_header.as_ref() {
-            len += 1 + pack_header.len() as u8;
-        }
-
-        if self.program_packet_sequence_counter.is_some() {
-            len += 2;
-        }
-
-        if self.p_std_buffer.is_some() {
-            len += 2;
-        }
-
-        if let Some(ext) = self.extension_2.as_ref() {
-            len += ext.length();
-        }
-
-        len
-    }
-
-    fn write(&self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        let data = (self.private_data.is_some() as u8) << 7
-            | (self.pack_header.is_some() as u8) << 6
-            | (self.program_packet_sequence_counter.is_some() as u8) << 5
-            | (self.p_std_buffer.is_some() as u8) << 4
-            | self.extension_2.is_some() as u8;
-        buff.write(&[data])?;
-
-        if let Some(data) = self.private_data.as_ref() {
-            if data.len() < 16 {
-                let mut d = data.clone();
-                d.resize(16, 0xFE);
-                buff.write(&d)?;
-            } else {
-                buff.write(&data)?;
-            }
-        }
-
-        if let Some(data) = self.pack_header.as_ref() {
-            buff.write(&[data.len() as u8])?;
-            buff.write(data)?;
-        }
-
-        if let Some(p) = self.program_packet_sequence_counter.as_ref() {
-            let data = 1 << 7 | p.counter;
-            buff.write(&[data])?;
-            let data = 1 << 7
-                | (p.mpeg1_mpeg2_identifier as u8) << 6
-                | p.original_stuff_length;
-            buff.write(&[data])?;
-        }
-
-        if let Some(b) = self.p_std_buffer.as_ref() {
-            let data: u16 = 1u16 << 14 | (b.scale as u16) << 13 | b.size as u16;
-            buff.write(&data.to_be_bytes())?;
-        }
-
-        if let Some(ext) = self.extension_2.as_ref() {
-            let pos = buff.position() as usize;
-            ext.write(&mut buff.get_mut()[pos..])?;
-        }
-
-        Ok(())
-    }
-
-}
-
-impl HeaderExtension2 {
-    fn length(&self) -> u8 {
-        use HeaderExtension2::*;
-
-        let mut len = 2u8;
-
-        len += match self {
-            StreamIdExtension(_) => 0,
-            TREF(_) => 5
-        };
-
-        len
-    }
-
-    fn write(&self, buf: &mut [u8]) -> io::Result<()> {
-        use HeaderExtension2::*;
-
-        let mut buff = Cursor::new(buf);
-
-        let data = 1 << 7 | self.length();
-        buff.write(&[data])?;
-
-        match self {
-            StreamIdExtension(id) => {
-                buff.write(&[*id])?;
-            },
-            TREF(tref) => {
-                let data = 1 << 7;
-                buff.write(&[data])?;
-                let data = format_timestamp(*tref);
-                buff.write(&data.to_be_bytes()[3..])?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl Packet {
-    pub fn length_(&self) -> u16 {
-        /* FIXME: payload */
-        6 + self.pes_packet_length()
-    }
-
-    fn pes_packet_length(&self) -> u16 {
-        let mut len = 0u16;
-
-        if let Some(header) = self.header.as_ref() {
-            len += header.length() as u16;
-        }
-
-        len
-    }
-
-    fn write(&self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        let stream_id: u8 = self.stream_id.into();
-        let data = 1u32 << 8 | stream_id as u32;
-        buff.write(&data.to_be_bytes())?;
-
-        /* FIXME: this needs to include payload.len() */
-        buff.write(&self.pes_packet_length().to_be_bytes())?;
-
-
-        if self.stream_id.has_header() != self.header.is_some() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid stream_id/header"));
-        }
-
-        if let Some(header) = self.header.as_ref() {
-            let pos = buff.position() as usize;
-            header.write(&mut buff.get_mut()[pos..])?;
-        }
-
-        Ok(())
-    }
-}
-
 pub fn parse_packet<'a>(input: &'a [u8]) -> IResult<&[u8], (Packet, &'a [u8])> {
     let (input, (stream_id, length)) = do_parse!(input,
         tag!(&[0x00, 0x00, 0x01]) >>
@@ -766,9 +459,9 @@ fn parse_header_extension(input: &[u8]) -> IResult<&[u8], HeaderExtension> {
                 (PSTDBuffer { scale, size })
             )) >>
             extension_2: cond!(extension_flag_2, do_parse!(
-                verify!(take_bits!(u8, 1), |v| v == 1) >>
-                len: verify!(take_bits!(u8, 7), |len| len > 1) >>
-                ext_2: bytes!(slice!(len - 1, bits!(
+                take_bits!(u8, 1) >>
+                len: verify!(take_bits!(u8, 7), |len| len >= 1) >>
+                ext_2: bytes!(slice!(len, bits!(
                     switch!(take_bits!(u8, 1),
                         0 => map!(take_bits!(u8, 7), |x| Some(StreamIdExtension(x))) |
                         1 => do_parse!(
@@ -802,39 +495,39 @@ fn parse_header_extension(input: &[u8]) -> IResult<&[u8], HeaderExtension> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::writer;
 
     proptest! {
         #[test]
         fn test_header_extension(mut ext: HeaderExtension) {
             let mut buf = Vec::new();
-            let len = ext.length() as usize;
+            let len = writer::header_ext_len(&ext) as usize;
             buf.resize(len, 0);
-            ext.write(&mut buf).unwrap();
+            writer::write_header_ext(&ext, &mut buf).unwrap();
             assert_eq!(parse_header_extension(&buf), Ok((&buf[len..], ext)))
         }
         #[test]
 
         fn test_header(mut header: Header) {
             let mut buf = Vec::new();
-            let len = header.length() as usize;
+            let len = writer::header_len(&header) as usize;
             buf.resize(len, 0);
-            header.write(&mut buf).unwrap();
-            let (input, (parsed_header, data)) = parse_header_and_data(&buf)?;
+            writer::write_header(&header, &mut buf).unwrap();
+            let (input, (parsed_header, _data)) = parse_header_and_data(&buf)?;
             assert_eq!(parsed_header, header);
-            assert_eq!(input, &buf[header.length() as usize..]);
+            assert_eq!(input, &buf[writer::header_len(&header) as usize..]);
         }
 
         #[test]
         fn test_packet(mut packet: Packet) {
             let mut buf = Vec::new();
-            let len = packet.length_() as usize;
-            /* FIXME: fix this stuff pls */
-            packet.length = packet.pes_packet_length();
+            let len = writer::packet_len(&packet) as usize;
+            packet.length = writer::pes_packet_len(&packet);
             buf.resize(len, 0);
-            packet.write(&mut buf).unwrap();
-            let (input, (parsed_packet, data)) = parse_packet(&buf)?;
+            writer::write_packet(&packet, &[], &mut buf);
+            let (input, (parsed_packet, _data)) = parse_packet(&buf)?;
             assert_eq!(parsed_packet, packet);
-            assert_eq!(input, &buf[packet.length_() as usize..]);
+            assert_eq!(input, &buf[writer::packet_len(&packet) as usize..]);
         }
     }
 

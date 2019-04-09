@@ -1,16 +1,18 @@
+pub mod writer;
+
 use nom::{
     be_u32, be_u8, bits, bytes, call, complete, cond, do_parse, length_bytes, many0, peek, rest,
     switch, take, value, verify, IResult,
 };
-use std::collections::HashMap;
-use std::io::{self, Cursor, Write};
 
 use crate::ts::packet::Packet;
-
-use crc::crc32;
+use indexmap::map::IndexMap;
 
 #[cfg(test)]
 use proptest::prelude::*;
+
+#[cfg(test)]
+use proptest::collection;
 
 #[cfg(test)]
 use proptest_derive::Arbitrary;
@@ -35,14 +37,14 @@ pub struct PATSection {
     pub section_number: u8,
     pub last_section_number: u8,
     #[cfg_attr(test, proptest(strategy(pid_map)))]
-    pub pmt_pids: HashMap<u16, u16>,
+    pub pmt_pids: IndexMap<u16, u16>,
 }
 
 #[derive(Default, Debug)]
 pub struct PAT {
     pub transport_stream_id: u16,
     pub version_number: u8,
-    pub pmt_pids: HashMap<u16, u16>,
+    pub pmt_pids: IndexMap<u16, u16>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -100,7 +102,7 @@ impl PSISections<PAT> for Vec<PATSection> {
 
         let pmt_pids = self
             .iter()
-            .fold(HashMap::<u16, u16>::new(), |mut pids, section| {
+            .fold(IndexMap::<u16, u16>::new(), |mut pids, section| {
                 pids.extend(section.pmt_pids.iter());
                 pids
             });
@@ -137,106 +139,6 @@ impl PSISections<PMT> for Vec<PMTSection> {
         self.clear();
 
         pmt
-    }
-}
-
-impl PATSection {
-    pub fn length(&self) -> u16 {
-        // header up to and including the section_length field
-        3 + self.section_length()
-    }
-
-    pub fn section_length(&self) -> u16 {
-        // fixed part including CRC32
-        let mut len = 9u16;
-
-        // (program_number, pid) for each pmt entry
-        len += self.pmt_pids.len() as u16 * 4;
-
-        len
-    }
-
-    pub fn write(&mut self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        buff.write(&[0x00])?;
-
-        let mut tmp = self.section_length().to_be_bytes();
-        tmp[0] |= (self.section_syntax_indicator as u8) << 7 | 0 << 6;
-        buff.write(&tmp)?;
-
-        buff.write(&self.transport_stream_id.to_be_bytes())?;
-        let tmp = (self.version_number & 0x1F) << 1 | self.current_next_indicator as u8;
-        buff.write(&[tmp])?;
-
-        buff.write(&[self.section_number])?;
-        buff.write(&[self.last_section_number])?;
-
-        for (program, pid) in self.pmt_pids.iter() {
-            buff.write(&program.to_be_bytes())?;
-            buff.write(&(pid & 0x1FFF).to_be_bytes())?;
-        }
-
-        let crc = crc32::checksum_ieee(&buff.get_ref()[0..buff.position() as usize]);
-        buff.write(&crc.to_be_bytes())?;
-
-        Ok(())
-    }
-}
-
-impl PMTSection {
-    pub fn length(&self) -> u16 {
-        // header up to and including the section_length field
-        3 + self.section_length()
-    }
-
-    pub fn section_length(&self) -> u16 {
-        // fixed part including CRC32
-        let mut len = 13u16;
-
-        len += self.program_info_length();
-
-        len += self.streams.iter().map(|s| {
-            5 + s.descriptors.len() as u16
-        }).sum::<u16>();
-
-        len
-    }
-
-    pub fn program_info_length(&self) -> u16 {
-        self.descriptors.len() as u16
-    }
-
-    pub fn write(&mut self, buf: &mut [u8]) -> io::Result<()> {
-        let mut buff = Cursor::new(buf);
-
-        buff.write(&[0x02])?;
-
-        let mut tmp = self.section_length().to_be_bytes();
-        tmp[0] |= (self.section_syntax_indicator as u8) << 7 | 0 << 6;
-        buff.write(&tmp)?;
-
-        buff.write(&self.program_number.to_be_bytes())?;
-        let tmp = (self.version_number & 0x1F) << 1 | self.current_next_indicator as u8;
-        buff.write(&[tmp])?;
-
-        buff.write(&[self.section_number])?;
-        buff.write(&[self.last_section_number])?;
-
-        buff.write(&(self.pcr_pid & 0x1FFF).to_be_bytes())?;
-        buff.write(&self.program_info_length().to_be_bytes())?;
-        buff.write(&self.descriptors)?;
-        for stream in self.streams.iter() {
-            buff.write(&[stream.stream_type])?;
-            buff.write(&(stream.pid & 0x1FFF).to_be_bytes())?;
-            buff.write(&(stream.descriptors.len() as u16 & 0xFFF).to_be_bytes())?;
-            buff.write(&stream.descriptors)?;
-        }
-
-        let crc = crc32::checksum_ieee(&buff.get_ref()[0..buff.position() as usize]);
-        buff.write(&crc.to_be_bytes())?;
-
-        Ok(())
     }
 }
 
@@ -364,20 +266,19 @@ pub fn parse_psi<'a>(packet: &Packet, input: &'a [u8]) -> IResult<&'a [u8], Sect
             b"\x00" => call!(parse_program_association_section) |
             b"\x02" => call!(parse_program_map_section) |
             _ => do_parse!(
-                data: call!(rest) >>
-                (Section::Unsupported(table_id[0], data.to_vec()))
-            )
+                    data: call!(rest) >>
+                    (Section::Unsupported(table_id[0], data.to_vec())))
         ) >>
         (section)
     )
 }
 
 #[cfg(test)]
-fn pid_map() -> impl Strategy<Value = HashMap<u16, u16>> {
-    any::<HashMap<u16, u16>>().prop_map(|map| {
-        let mut ret = HashMap::new();
-        for (k, v) in map.iter().map(|(k, v)| (k, v & 0x1FFF)) {
-            ret.insert(*k, v);
+fn pid_map() -> impl Strategy<Value = IndexMap<u16, u16>> {
+    collection::hash_map(0..2u16.pow(13), 0..2u16.pow(13), 0..10).prop_map(|map| {
+        let mut ret = IndexMap::new();
+        for (k, v) in map {
+            ret.insert(k, v);
         }
 
         ret
@@ -387,24 +288,33 @@ fn pid_map() -> impl Strategy<Value = HashMap<u16, u16>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::writer;
 
     proptest! {
         #[test]
-        fn test_pat_section(mut section: PATSection) {
+        fn test_pat_section(mut pat: PATSection) {
             let mut buf = Vec::new();
-            buf.resize(section.length() as usize, 0);
-            section.write(&mut buf).unwrap();
+            buf.resize(writer::pat_len(&pat) as usize, 0u8);
+            let section = Section::PAT(pat);
+            
+            let written = writer::write_section(&section, &mut buf);
+            assert_eq!(written, buf.len());
+
             let res = parse_program_association_section(&buf).unwrap();
-            assert_eq!(res, (&[][..], Section::PAT(section)));
+            assert_eq!(res, (&[][..], section));
         }
 
         #[test]
-        fn test_pmt_section(mut section: PMTSection) {
+        fn test_pmt_section(mut pmt: PMTSection) {
             let mut buf = Vec::new();
-            buf.resize(section.length() as usize, 0);
-            section.write(&mut buf).unwrap();
+            buf.resize(writer::pmt_len(&pmt) as usize, 0u8);
+            let section = Section::PMT(pmt);
+            
+            let written = writer::write_section(&section, &mut buf);
+            assert_eq!(written, buf.len());
+
             let res = parse_program_map_section(&buf).unwrap();
-            assert_eq!(res, (&[][..], Section::PMT(section)));
+            assert_eq!(res, (&[][..], section));
         }
     }
 }
