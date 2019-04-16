@@ -1,13 +1,17 @@
+use std::convert::From;
 use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
-use std::cmp::min;
+use std::cmp;
+use std::io::{self, Read};
+use nom::{self, Err::Incomplete, Needed};
 
 use crate::ts;
 use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PAT, PMT};
 use crate::pes;
 use nom::IResult;
 
-pub const SYNC_LENGTH: usize = 2 * 188 + 1;
+pub const PACKET_SIZE: usize = 188;
+pub const SYNC_LENGTH: usize = 2 * PACKET_SIZE + 1;
 
 pub struct Parser {
     pat_sections: Vec<PATSection>,
@@ -17,8 +21,11 @@ pub struct Parser {
     psi_pids: HashSet<u16>,
 }
 
-fn initial_psi_pids() -> HashSet<u16> {
-    [0, 1, 2, 3].iter().cloned().collect()
+#[derive(Debug)]
+pub enum ParseError {
+    Incomplete(usize),
+    LostSync,
+    Unrecoverable
 }
 
 #[derive(Debug)]
@@ -26,6 +33,10 @@ pub enum Data<'a> {
     PSI(Section),
     PES(pes::Packet, &'a [u8]),
     Data(&'a [u8])
+}
+
+fn initial_psi_pids() -> HashSet<u16> {
+    [0, 1, 2, 3].iter().cloned().collect()
 }
 
 impl Parser {
@@ -79,7 +90,7 @@ impl Parser {
             return None
         }
 
-        let input = &data[..min(data.len() - SYNC_LENGTH, 1024 * 1024)];
+        let input = &data[..cmp::min(data.len() - SYNC_LENGTH, 1024 * 1024)];
         for (i, x) in input.iter().cloned().enumerate() {
             if x == 0x47 && input[i + 188] == 0x47 && input[i + 2 * 188] == 0x47 {
                 return Some(&data[i..]);
@@ -89,11 +100,11 @@ impl Parser {
         None
     }
 
-    pub fn is_psi(&self, packet: &ts::Packet) -> bool {
+    fn is_psi(&self, packet: &ts::Packet) -> bool {
         self.psi_pids.contains(&packet.pid)
     }
 
-    pub fn parse_psi<'a>(&self, packet: &ts::Packet, payload: &'a [u8]) -> IResult<&'a [u8], Section> {
+    fn parse_psi<'a>(&self, packet: &ts::Packet, payload: &'a [u8]) -> IResult<&'a [u8], Section> {
         parse_psi(packet, payload)
     }
 
@@ -126,5 +137,117 @@ impl Parser {
         }
 
         Ok((rest, (packet, Data::Data(payload))))
+    }
+}
+
+struct ParserBuffer<T: Read> {
+    inner: T,
+    buf: Box<[u8]>,
+    pos: usize,
+    cap: usize
+}
+
+impl<T: Read> ParserBuffer<T> {
+    fn new(size: usize, reader: T) -> Self {
+        let mut buf = Vec::with_capacity(size);
+        buf.resize(size, 0xFE);
+        ParserBuffer {
+            inner: reader,
+            buf: buf.into_boxed_slice(),
+            pos: 0,
+            cap: 0
+        }
+    }
+
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if self.pos >= self.cap {
+            debug_assert!(self.pos == self.cap);
+            self.cap = self.inner.read(&mut self.buf)?;
+            self.pos = 0;
+        }
+        Ok(&self.buf[self.pos..self.cap])
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.pos = cmp::min(self.pos + amt, self.cap);
+    }
+
+    fn compact(&mut self) {
+        if self.pos < self.cap {
+            self.buf.rotate_left(self.pos);
+            self.cap -= self.pos;
+            self.pos = 0;
+        }
+    }
+}
+
+impl From<io::Error> for ParseError {
+    fn from(error: io::Error) -> ParseError {
+        ParseError::Unrecoverable
+    }
+}
+
+pub struct ReaderParser<T: Read> {
+    parser: Parser,
+    buffer: ParserBuffer<T>,
+    consumed: usize
+}
+
+impl<T: Read> ReaderParser<T> {
+    pub fn new(reader: T) -> Self {
+        ReaderParser {
+            parser: Parser::new(),
+            buffer: ParserBuffer::new(PACKET_SIZE * 100, reader),
+            consumed: 0
+        }
+    }
+
+    pub fn recover(&mut self, error: ParseError) -> Result<(), ParseError> {
+        use ParseError::*;
+        match error {
+            Incomplete(needed) => {
+                self.buffer.compact();
+                let input = self.buffer.fill_buf()?;
+                if input.len() < needed {
+                    return Err(Unrecoverable)
+                }
+
+                Ok(())
+            },
+            LostSync => {
+                self.buffer.compact();
+                let input = self.buffer.fill_buf()?;
+                if let Some(next_input) = self.parser.sync(input) {
+                    let skipped = input.len() - next_input.len();
+                    self.buffer.consume(skipped);
+                    return Ok(())
+                }
+
+                return Err(Unrecoverable)
+            },
+            Unrecoverable => Err(Unrecoverable)
+        }
+    }
+
+    pub fn parse(&mut self) -> Result<Option<(&[u8], ts::Packet, ts::Data)>, ParseError> {
+        self.buffer.consume(self.consumed);
+        self.consumed = 0;
+
+        let input = self.buffer.fill_buf()?;
+        if input.len() == 0 {
+            return Ok(None)
+        }
+        match self.parser.parse(input) {
+            Ok((rest, (packet, data))) => {
+                self.consumed = input.len() - rest.len();
+                Ok(Some((input, packet, data)))
+            },
+            Err(Incomplete(Needed::Size(needed))) => {
+                Err(ParseError::Incomplete(needed))
+            },
+            Err(_) => {
+                Err(ParseError::LostSync)
+            }
+        }
     }
 }
