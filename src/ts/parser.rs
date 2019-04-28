@@ -67,6 +67,10 @@ impl Parser {
         }
     }
 
+    pub fn get_pat(&self) -> &Option<PAT> {
+        &self.active_pat
+    }
+
     fn handle_pmt(&mut self, pmt: &PMTSection) {
         if let Some(active_pmt) = self.active_pmts.get(&pmt.program_number) {
             /* only process PMT updates, handling version_number wrap arounds */
@@ -81,6 +85,10 @@ impl Parser {
             let pmt = sections.complete().unwrap();
             self.active_pmts.insert(program_number, pmt);
         }
+    }
+
+    pub fn get_pmt(&self, program: u16) -> Option<&PMT> {
+        self.active_pmts.get(&program)
     }
 
     pub fn sync<'a>(&self, data: &'a [u8]) -> Option<&'a [u8]> {
