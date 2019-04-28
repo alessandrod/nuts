@@ -58,9 +58,8 @@ impl Parser {
             }
         }
 
-        let complete = pat.section_number == pat.last_section_number && pat.current_next_indicator;
         self.pat_sections.push(pat.clone());
-        if complete {
+        if pat.is_complete() {
             let pat = self.pat_sections.complete().unwrap();
             self.psi_pids = initial_psi_pids();
             self.psi_pids.extend(pat.pmt_pids.values());
@@ -77,9 +76,8 @@ impl Parser {
         }
         let program_number = pmt.program_number;
         let sections = self.pmt_sections.entry(pmt.program_number).or_insert_with(Vec::new);
-        let complete = pmt.section_number == pmt.last_section_number && pmt.current_next_indicator;
         sections.push(pmt.clone());
-        if complete {
+        if pmt.is_complete() {
             let pmt = sections.complete().unwrap();
             self.active_pmts.insert(program_number, pmt);
         }

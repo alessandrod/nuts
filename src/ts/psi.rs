@@ -142,6 +142,18 @@ impl PSISections<PMT> for Vec<PMTSection> {
     }
 }
 
+impl PATSection {
+    pub fn is_complete(&self) -> bool {
+        self.section_number == self.last_section_number && self.current_next_indicator
+    }
+}
+
+impl PMTSection {
+    pub fn is_complete(&self) -> bool {
+        self.section_number == self.last_section_number && self.current_next_indicator
+    }
+}
+
 fn parse_program_association_section(input: &[u8]) -> IResult<&[u8], Section> {
     let mut section = PATSection::default();
     let mut section_length = 0u16;
