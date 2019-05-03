@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::cmp;
 use std::io::{self, Read};
-use nom::{self, Err::Incomplete, Needed};
+use nom::{self, Err, Needed};
 
 use crate::ts;
 use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PAT, PMT};
@@ -130,7 +130,7 @@ impl Parser {
         return false;
     }
 
-    pub fn parse<'a>(&mut self, input: &'a [u8]) -> IResult<&'a [u8], (ts::Packet, Data<'a>)> {
+    pub fn parse<'a>(&mut self, input: &'a [u8]) -> Result<(&'a [u8], (ts::Packet, Data<'a>)), ParseError> {
         let (rest, (packet, payload)) = ts::parse_packet(input)?;
 
         if self.is_psi(&packet) {
@@ -260,17 +260,8 @@ impl<T: Read> ReaderParser<T> {
         if input.len() == 0 {
             return Ok(None)
         }
-        match self.parser.parse(input) {
-            Ok((rest, (packet, data))) => {
-                self.consumed = input.len() - rest.len();
-                Ok(Some((input, packet, data)))
-            },
-            Err(Incomplete(Needed::Size(needed))) => {
-                Err(ParseError::Incomplete(needed))
-            },
-            Err(_) => {
-                Err(ParseError::LostSync)
-            }
-        }
+        let (rest, (packet, data)) = self.parser.parse(input)?;
+        self.consumed = input.len() - rest.len();
+        Ok(Some((input, packet, data)))
     }
 }
