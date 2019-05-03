@@ -88,8 +88,13 @@ impl Parser {
         }
     }
 
-    pub fn get_pmt(&self, program: u16) -> Option<&PMT> {
-        self.active_pmts.get(&program)
+    pub fn get_pmt(&self, program: Option<u16>) -> Option<&PMT> {
+        let program = program.as_ref().or_else(|| self.active_pmts.keys().next())?;
+        self.active_pmts.get(program)
+    }
+
+    pub fn pmts(&self) -> &HashMap<u16, PMT> {
+        &self.active_pmts
     }
 
     pub fn sync<'a>(&self, data: &'a [u8]) -> Option<&'a [u8]> {
