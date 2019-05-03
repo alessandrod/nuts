@@ -40,7 +40,7 @@ pub struct PATSection {
     pub pmt_pids: IndexMap<u16, u16>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct PAT {
     pub transport_stream_id: u16,
     pub version_number: u8,
@@ -73,7 +73,7 @@ pub struct PMTSection {
     pub streams: Vec<Stream>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct PMT {
     pub program_number: u16,
     pub version_number: u8,
@@ -81,13 +81,13 @@ pub struct PMT {
     pub streams: Vec<Stream>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Stream {
-    stream_type: u8,
+    pub stream_type: u8,
     #[cfg_attr(test, proptest(strategy = "0..2u16.pow(13)"))]
-    pid: u16,
-    descriptors: Vec<u8>
+    pub pid: u16,
+    pub descriptors: Vec<u8>
 }
 
 pub trait PSISections<T> {

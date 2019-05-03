@@ -7,7 +7,7 @@ use proptest::prelude::*;
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct PCR {
     #[cfg_attr(test, proptest(strategy = "0..2u64.pow(33)"))]
@@ -16,7 +16,7 @@ pub struct PCR {
     pub extension: u16,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct LTW {
     pub valid: bool,
@@ -24,7 +24,7 @@ pub struct LTW {
     pub offset: u16,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct SeamlessSplice {
     #[cfg_attr(test, proptest(strategy = "0..2u8.pow(4)"))]
@@ -33,7 +33,7 @@ pub struct SeamlessSplice {
     pub dts_next_au: u64,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct AdaptationFieldExtension {
     pub ltw: Option<LTW>,
@@ -44,7 +44,7 @@ pub struct AdaptationFieldExtension {
     pub data: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct AdaptationField {
     #[cfg_attr(test, proptest(value = "false"))]

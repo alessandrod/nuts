@@ -8,7 +8,7 @@ use proptest::prelude::*;
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum AdaptationFieldControl {
     Reserved,
@@ -17,7 +17,7 @@ pub enum AdaptationFieldControl {
     AdaptationFieldAndPayload(Option<AdaptationField>),
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Packet {
     pub transport_error_indicator: bool,

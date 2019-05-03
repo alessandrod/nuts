@@ -13,6 +13,7 @@ use nom::IResult;
 pub const PACKET_SIZE: usize = 188;
 pub const SYNC_LENGTH: usize = 2 * PACKET_SIZE + 1;
 
+#[derive(Debug)]
 pub struct Parser {
     pat_sections: Vec<PATSection>,
     active_pat: Option<PAT>,
@@ -146,6 +147,7 @@ impl Parser {
     }
 }
 
+#[derive(Debug)]
 struct ParserBuffer<T: Read> {
     inner: T,
     buf: Box<[u8]>,
@@ -193,6 +195,16 @@ impl From<io::Error> for ParseError {
     }
 }
 
+impl<T> From<nom::Err<T>> for ParseError {
+    fn from(error: nom::Err<T>) -> ParseError {
+        match error {
+            nom::Err::Incomplete(Needed::Size(needed)) => ParseError::Incomplete(needed),
+            _ => ParseError::LostSync
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct ReaderParser<T: Read> {
     parser: Parser,
     buffer: ParserBuffer<T>,

@@ -12,7 +12,7 @@ use proptest::{collection, option, prelude::*};
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum StreamId {
     ProgramStreamMap,
@@ -43,7 +43,7 @@ pub enum StreamId {
     Unknown(u8)
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 // FIXME: merge his and PCR?
 pub struct ESCR {
@@ -53,7 +53,7 @@ pub struct ESCR {
     pub extension: u16,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum TrickMode {
     #[cfg_attr(test, proptest(strategy("tests::trick_mode_fast_forward()")))]
@@ -70,7 +70,7 @@ pub enum TrickMode {
     Reserved(u8)
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(test, proptest(filter = "|header| !(header.pts.is_none() && header.dts.is_some())"))]
 pub struct Header {
@@ -95,7 +95,7 @@ pub struct Header {
     #[cfg_attr(test, proptest(value = "0"))] /* FIXME: find the max value */
     pub stuffing_len: u8
 }
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct ProgramPacketSequenceCounter {
     #[cfg_attr(test, proptest(strategy = "0..2u8.pow(7)"))]
@@ -105,7 +105,7 @@ pub struct ProgramPacketSequenceCounter {
     pub original_stuff_length: u8,
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct PSTDBuffer {
     #[cfg_attr(test, proptest(strategy = "0..2u8"))]
@@ -114,7 +114,7 @@ pub struct PSTDBuffer {
     size: u16
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct HeaderExtension {
     #[cfg_attr(test, proptest(strategy("option::of(collection::vec(any::<u8>(), 16))")))]
@@ -126,7 +126,7 @@ pub struct HeaderExtension {
     pub extension_2: Option<HeaderExtension2>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum HeaderExtension2 {
     #[cfg_attr(test, proptest(strategy("tests::header_extension_2_stream_id()")))]
@@ -135,7 +135,7 @@ pub enum HeaderExtension2 {
     TREF(u64)
 }
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(test, proptest(filter="|p| tests::packet_filter(p)"))]
 pub struct Packet {
