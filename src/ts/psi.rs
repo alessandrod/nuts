@@ -40,7 +40,7 @@ pub struct PATSection {
     pub pmt_pids: IndexMap<u16, u16>,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct PAT {
     pub transport_stream_id: u16,
     pub version_number: u8,
