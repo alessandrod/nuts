@@ -16,7 +16,7 @@ pub const SYNC_LENGTH: usize = 2 * PACKET_SIZE + 1;
 #[derive(Debug)]
 pub struct Parser {
     pat_sections: Vec<PATSection>,
-    active_pat: Option<PAT>,
+    pat: Option<PAT>,
     pmt_sections: HashMap<u16, Vec<PMTSection>>,
     pmts: HashMap<u16, PMT>,
     psi_pids: HashSet<u16>,
@@ -44,7 +44,7 @@ impl Parser {
     pub fn new() -> Self {
         Self {
             pat_sections: Vec::new(),
-            active_pat: None,
+            pat: None,
             pmt_sections: HashMap::new(),
             pmts: HashMap::new(),
             psi_pids: initial_psi_pids()
@@ -52,9 +52,9 @@ impl Parser {
     }
 
     fn handle_pat(&mut self, pat: &PATSection) {
-        if let Some(active_pat) = &self.active_pat {
+        if let Some(current_pat) = &self.pat {
             /* only process PAT updates, handling version_number wrap arounds */
-            if pat.version_number <= active_pat.version_number && active_pat.version_number < 31 {
+            if pat.version_number <= current_pat.version_number && current_pat.version_number < 31 {
                 return;
             }
         }
@@ -64,12 +64,8 @@ impl Parser {
             let pat = self.pat_sections.complete().unwrap();
             self.psi_pids = initial_psi_pids();
             self.psi_pids.extend(pat.pmt_pids.values());
-            self.active_pat = Some(pat);
+            self.pat = Some(pat);
         }
-    }
-
-    pub fn get_pat(&self) -> &Option<PAT> {
-        &self.active_pat
     }
 
     fn handle_pmt(&mut self, pmt: &PMTSection) {
@@ -86,6 +82,10 @@ impl Parser {
             let pmt = sections.complete().unwrap();
             self.pmts.insert(program_number, pmt);
         }
+    }
+
+    pub fn pat(&self) -> Option<&PAT> {
+        self.pat.as_ref()
     }
 
     pub fn get_pmt(&self, program: Option<u16>) -> Option<&PMT> {
