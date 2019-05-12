@@ -73,12 +73,12 @@ pub struct PMTSection {
     pub streams: Vec<Stream>,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct PMT {
     pub program_number: u16,
     pub version_number: u8,
     pub pcr_pid: u16,
-    pub streams: Vec<Stream>,
+    pub streams: IndexMap<u16, Stream>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -124,17 +124,19 @@ impl PSISections<PMT> for Vec<PMTSection> {
             return None;
         }
 
-        let streams = self.iter_mut().fold(Vec::new(), |mut streams, section| {
-            streams.extend(section.streams.drain(..));
-            streams
-        });
+        let streams = self
+            .iter_mut()
+            .fold(IndexMap::new(), |mut streams, section| {
+                streams.extend(section.streams.drain(..).map(|stream| (stream.pid, stream)));
+                streams
+            });
 
         let first = &self[0];
         let pmt = Some(PMT {
             program_number: first.program_number,
             version_number: first.version_number,
             pcr_pid: first.pcr_pid,
-            streams
+            streams,
         });
         self.clear();
 
