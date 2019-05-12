@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::cmp;
 use std::io::{self, Read};
-use nom::{self, Err, Needed};
+use nom::{self, Needed};
 
 use crate::ts;
 use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PAT, PMT};
@@ -18,7 +18,7 @@ pub struct Parser {
     pat_sections: Vec<PATSection>,
     active_pat: Option<PAT>,
     pmt_sections: HashMap<u16, Vec<PMTSection>>,
-    active_pmts: HashMap<u16, PMT>,
+    pmts: HashMap<u16, PMT>,
     psi_pids: HashSet<u16>,
 }
 
@@ -46,7 +46,7 @@ impl Parser {
             pat_sections: Vec::new(),
             active_pat: None,
             pmt_sections: HashMap::new(),
-            active_pmts: HashMap::new(),
+            pmts: HashMap::new(),
             psi_pids: initial_psi_pids()
         }
     }
@@ -73,7 +73,7 @@ impl Parser {
     }
 
     fn handle_pmt(&mut self, pmt: &PMTSection) {
-        if let Some(active_pmt) = self.active_pmts.get(&pmt.program_number) {
+        if let Some(active_pmt) = self.pmts.get(&pmt.program_number) {
             /* only process PMT updates, handling version_number wrap arounds */
             if pmt.version_number <= active_pmt.version_number && active_pmt.version_number < 31 {
                 return;
@@ -84,17 +84,17 @@ impl Parser {
         sections.push(pmt.clone());
         if pmt.is_complete() {
             let pmt = sections.complete().unwrap();
-            self.active_pmts.insert(program_number, pmt);
+            self.pmts.insert(program_number, pmt);
         }
     }
 
     pub fn get_pmt(&self, program: Option<u16>) -> Option<&PMT> {
-        let program = program.as_ref().or_else(|| self.active_pmts.keys().next())?;
-        self.active_pmts.get(program)
+        let program = program.as_ref().or_else(|| self.pmts.keys().next())?;
+        self.pmts.get(program)
     }
 
     pub fn pmts(&self) -> &HashMap<u16, PMT> {
-        &self.active_pmts
+        &self.pmts
     }
 
     pub fn sync<'a>(&self, data: &'a [u8]) -> Option<&'a [u8]> {
