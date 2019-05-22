@@ -10,6 +10,8 @@ use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PA
 use crate::pes;
 use nom::IResult;
 
+use fixedbitset::FixedBitSet;
+
 pub const PACKET_SIZE: usize = 188;
 pub const SYNC_LENGTH: usize = 2 * PACKET_SIZE + 1;
 
@@ -19,7 +21,7 @@ pub struct Parser {
     pat: Option<PAT>,
     pmt_sections: HashMap<u16, Vec<PMTSection>>,
     pmts: HashMap<u16, PMT>,
-    psi_pids: HashSet<u16>,
+    psi_pids: FixedBitSet
 }
 
 #[derive(Debug)]
@@ -36,18 +38,21 @@ pub enum Data<'a> {
     Data(&'a [u8])
 }
 
-fn initial_psi_pids() -> HashSet<u16> {
-    [0, 1, 2, 3].iter().cloned().collect()
+fn init_psi_pids(pids: &mut FixedBitSet) {
+    pids.clear();
+    pids.insert_range(0..4);
 }
 
 impl Parser {
     pub fn new() -> Self {
+        let mut psi_pids = FixedBitSet::with_capacity(0x1FFF);
+        init_psi_pids(&mut psi_pids);
         Self {
             pat_sections: Vec::new(),
             pat: None,
             pmt_sections: HashMap::new(),
             pmts: HashMap::new(),
-            psi_pids: initial_psi_pids()
+            psi_pids: psi_pids
         }
     }
 
@@ -62,8 +67,10 @@ impl Parser {
         self.pat_sections.push(pat.clone());
         if pat.is_complete() {
             let pat = self.pat_sections.complete().unwrap();
-            self.psi_pids = initial_psi_pids();
-            self.psi_pids.extend(pat.pmt_pids.values());
+            init_psi_pids(&mut self.psi_pids);
+            for pid in pat.pmt_pids.values() {
+                self.psi_pids.insert(*pid as usize);
+            }
             self.pat = Some(pat);
         }
     }
@@ -112,7 +119,7 @@ impl Parser {
     }
 
     fn is_psi(&self, packet: &ts::Packet) -> bool {
-        self.psi_pids.contains(&packet.pid)
+        self.psi_pids.contains(packet.pid as usize)
     }
 
     fn parse_psi<'a>(&self, packet: &ts::Packet, payload: &'a [u8]) -> IResult<&'a [u8], Section> {
