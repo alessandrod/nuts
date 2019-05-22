@@ -12,3 +12,9 @@ indexmap = "^1.0.0"
 proptest = "0.9.1"
 proptest-derive = { path = "../proptest/proptest-derive" }
 #proptest-derive = "0.1.0"
+
+[profile.release]
+lto = true
+opt-level = 3
+debug = true
+panic = 'unwind'
