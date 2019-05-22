@@ -88,9 +88,8 @@ impl Parser {
         self.pat.as_ref()
     }
 
-    pub fn get_pmt(&self, program: Option<u16>) -> Option<&PMT> {
-        let program = program.as_ref().or_else(|| self.pmts.keys().next())?;
-        self.pmts.get(program)
+    pub fn get_pmt(&self, program: u16) -> Option<&PMT> {
+        self.pmts.get(&program)
     }
 
     pub fn pmts(&self) -> &HashMap<u16, PMT> {
@@ -263,5 +262,17 @@ impl<T: Read> ReaderParser<T> {
         let (rest, (packet, data)) = self.parser.parse(input)?;
         self.consumed = input.len() - rest.len();
         Ok(Some((input, packet, data)))
+    }
+
+    pub fn pat(&self) -> Option<&PAT> {
+        self.parser.pat()
+    }
+
+    pub fn get_pmt(&self, program: u16) -> Option<&PMT> {
+        self.parser.get_pmt(program)
+    }
+
+    pub fn pmts(&self) -> &HashMap<u16, PMT> {
+        self.parser.pmts()
     }
 }
