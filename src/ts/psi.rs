@@ -1,5 +1,7 @@
 pub mod writer;
 
+use std::collections::HashSet;
+
 use nom::{
     be_u32, be_u8, bits, bytes, call, complete, cond, do_parse, length_bytes, many0, peek, rest,
     switch, take, value, verify, IResult,
@@ -153,6 +155,12 @@ impl PATSection {
 impl PMTSection {
     pub fn is_complete(&self) -> bool {
         self.section_number == self.last_section_number && self.current_next_indicator
+    }
+}
+
+impl PAT {
+    pub fn programs(&self) -> HashSet<u16> {
+        self.pmt_pids.keys().cloned().collect()
     }
 }
 
