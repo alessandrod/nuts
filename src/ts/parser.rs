@@ -27,6 +27,7 @@ pub struct Parser {
 #[derive(Debug)]
 pub enum ParseError {
     Incomplete(usize),
+    Corrupt,
     LostSync,
     Unrecoverable
 }
@@ -148,6 +149,7 @@ impl Parser {
             }
             return Ok((rest, (packet, Data::PSI(section))))
         }
+
         if self.is_pes(&packet, &payload) {
             let (payload_rest, (pes_packet, payload)) = pes::parse_packet(payload)?;
             assert!(payload_rest.len() == 0);
@@ -210,6 +212,7 @@ impl<T> From<nom::Err<T>> for ParseError {
     fn from(error: nom::Err<T>) -> ParseError {
         match error {
             nom::Err::Incomplete(Needed::Size(needed)) => ParseError::Incomplete(needed),
+            nom::Err::Error(nom::Context::Code(_, nom::ErrorKind::Complete)) => ParseError::Corrupt,
             _ => ParseError::LostSync
         }
     }
@@ -242,18 +245,23 @@ impl<T: Read> ReaderParser<T> {
                 }
 
                 Ok(())
-            },
+            }
+            Corrupt => {
+                self.buffer.consume(1);
+                self.recover(ParseError::LostSync)
+            }
             LostSync => {
                 self.buffer.compact();
                 let input = self.buffer.fill_buf()?;
                 if let Some(next_input) = self.parser.sync(input) {
                     let skipped = input.len() - next_input.len();
+                    assert!(skipped > 0, "Parser stuck at sync point. This is a bug.");
                     self.buffer.consume(skipped);
                     return Ok(())
                 }
 
-                return Err(Unrecoverable)
-            },
+                Err(Unrecoverable)
+            }
             Unrecoverable => Err(Unrecoverable)
         }
     }
