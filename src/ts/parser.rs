@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::cmp;
 use std::io::{self, Read};
+use std::fmt;
+use std::error::Error;
 use nom::{self, Needed};
 
 use crate::ts;
@@ -25,11 +27,10 @@ pub struct Parser {
 }
 
 #[derive(Debug)]
-pub enum ParseError {
+pub enum ParserError {
     Incomplete(usize),
     Corrupt,
-    LostSync,
-    Unrecoverable
+    LostSync
 }
 
 #[derive(Debug)]
@@ -137,7 +138,7 @@ impl Parser {
         return false;
     }
 
-    pub fn parse<'a>(&mut self, input: &'a [u8]) -> Result<(&'a [u8], (ts::Packet, Data<'a>)), ParseError> {
+    pub fn parse<'a>(&mut self, input: &'a [u8]) -> Result<(&'a [u8], (ts::Packet, Data<'a>)), ParserError> {
         let (rest, (packet, payload)) = ts::parse_packet(input)?;
 
         if self.is_psi(&packet) {
@@ -159,6 +160,38 @@ impl Parser {
         Ok((rest, (packet, Data::Data(payload))))
     }
 }
+
+impl fmt::Display for ParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
+impl Error for ParserError {
+    fn description(&self) -> &str {
+        use ParserError::*;
+        match self {
+            Incomplete(_) => "incomplete input buffer",
+            Corrupt => "corrupt packet",
+            LostSync => "lost sync"
+        }
+    }
+
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl<T> From<nom::Err<T>> for ParserError {
+    fn from(error: nom::Err<T>) -> ParserError {
+        match error {
+            nom::Err::Incomplete(Needed::Size(needed)) => ParserError::Incomplete(needed),
+            nom::Err::Error(nom::Context::Code(_, nom::ErrorKind::Complete)) => ParserError::Corrupt,
+            _ => ParserError::LostSync
+        }
+    }
+}
+
 
 #[derive(Debug)]
 struct ParserBuffer<T: Read> {
@@ -202,19 +235,45 @@ impl<T: Read> ParserBuffer<T> {
     }
 }
 
-impl From<io::Error> for ParseError {
-    fn from(error: io::Error) -> ParseError {
-        ParseError::Unrecoverable
+#[derive(Debug)]
+pub enum ReaderParserError {
+    ParserError(ParserError),
+    ReadError(io::Error)
+}
+
+impl fmt::Display for ReaderParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.description(), self.source().unwrap())
     }
 }
 
-impl<T> From<nom::Err<T>> for ParseError {
-    fn from(error: nom::Err<T>) -> ParseError {
-        match error {
-            nom::Err::Incomplete(Needed::Size(needed)) => ParseError::Incomplete(needed),
-            nom::Err::Error(nom::Context::Code(_, nom::ErrorKind::Complete)) => ParseError::Corrupt,
-            _ => ParseError::LostSync
+impl Error for ReaderParserError {
+    fn description(&self) -> &str {
+        use ReaderParserError::*;
+        match self {
+            ParserError(_) => "error parsing transport stream",
+            ReadError(_) => "error reading input"
         }
+    }
+
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        use ReaderParserError::*;
+        match self {
+            ParserError(e) => Some(e),
+            ReadError(e) => Some(e)
+        }
+    }
+}
+
+impl From<io::Error> for ReaderParserError {
+    fn from(error: io::Error) -> Self {
+        ReaderParserError::ReadError(error)
+    }
+}
+
+impl From<ParserError> for ReaderParserError {
+    fn from(error: ParserError) -> Self {
+        ReaderParserError::ParserError(error)
     }
 }
 
@@ -234,21 +293,27 @@ impl<T: Read> ReaderParser<T> {
         }
     }
 
-    pub fn recover(&mut self, error: ParseError) -> Result<(), ParseError> {
-        use ParseError::*;
+    pub fn recover(&mut self, error: ReaderParserError) -> Result<(), ReaderParserError> {
+        use ParserError::*;
+
+        let error = match error {
+            ReaderParserError::ParserError(e) => e,
+            e => return Err(e)
+        };
+
         match error {
             Incomplete(needed) => {
                 self.buffer.compact();
                 let input = self.buffer.fill_buf()?;
                 if input.len() < needed {
-                    return Err(Unrecoverable)
+                    return Err(Incomplete(needed).into());
                 }
 
                 Ok(())
             }
             Corrupt => {
                 self.buffer.consume(1);
-                self.recover(ParseError::LostSync)
+                self.recover(ParserError::LostSync.into())
             }
             LostSync => {
                 self.buffer.compact();
@@ -260,13 +325,12 @@ impl<T: Read> ReaderParser<T> {
                     return Ok(())
                 }
 
-                Err(Unrecoverable)
+                Err(LostSync.into())
             }
-            Unrecoverable => Err(Unrecoverable)
         }
     }
 
-    pub fn parse(&mut self) -> Result<Option<(&[u8], ts::Packet, ts::Data)>, ParseError> {
+    pub fn parse(&mut self) -> Result<Option<(&[u8], ts::Packet, ts::Data)>, ReaderParserError> {
         self.buffer.consume(self.consumed);
         self.consumed = 0;
 
