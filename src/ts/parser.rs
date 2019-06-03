@@ -14,16 +14,14 @@ use nom::IResult;
 
 use fixedbitset::FixedBitSet;
 
-pub const PACKET_SIZE: usize = 188;
-pub const SYNC_LENGTH: usize = 2 * PACKET_SIZE + 1;
-
 #[derive(Debug)]
 pub struct Parser {
     pat_sections: Vec<PATSection>,
     pat: Option<PAT>,
     pmt_sections: HashMap<u16, Vec<PMTSection>>,
     pmts: HashMap<u16, PMT>,
-    psi_pids: FixedBitSet
+    psi_pids: FixedBitSet,
+    pub packet_size: usize
 }
 
 #[derive(Debug)]
@@ -47,6 +45,11 @@ fn init_psi_pids(pids: &mut FixedBitSet) {
 
 impl Parser {
     pub fn new() -> Self {
+        Parser::with_packet_size(188)
+    }
+
+    pub fn with_packet_size(size: usize) -> Self {
+        assert!(size >= 188);
         let mut psi_pids = FixedBitSet::with_capacity(0x1FFF);
         init_psi_pids(&mut psi_pids);
         Self {
@@ -54,7 +57,8 @@ impl Parser {
             pat: None,
             pmt_sections: HashMap::new(),
             pmts: HashMap::new(),
-            psi_pids: psi_pids
+            psi_pids: psi_pids,
+            packet_size: size
         }
     }
 
@@ -105,17 +109,18 @@ impl Parser {
         &self.pmts
     }
 
-    pub fn sync<'a>(&self, data: &'a [u8]) -> Option<&'a [u8]> {
-        if data.len() < SYNC_LENGTH {
-            return None
-        }
-
-        let input = &data[..cmp::min(data.len() - SYNC_LENGTH, 1024 * 1024)];
-        for (i, x) in input.iter().cloned().enumerate() {
-            if x == 0x47 && input[i + 188] == 0x47 && input[i + 2 * 188] == 0x47 {
-                return Some(&data[i..]);
+    pub fn sync<'a>(&self, mut data: &'a [u8]) -> Option<&'a [u8]> {
+        let sync_size = self.packet_size * 2;
+        let offset = self.packet_size - 188;
+        while data.len() >= sync_size {
+            if data[offset] == 0x47
+                && data[self.packet_size + offset] == 0x47
+                && data[2 * self.packet_size + offset] == 0x47 {
+                return Some(&data);
             }
-        };
+
+            data = &data[1..];
+        }
 
         None
     }
@@ -139,7 +144,8 @@ impl Parser {
     }
 
     pub fn parse<'a>(&mut self, input: &'a [u8]) -> Result<(&'a [u8], (ts::Packet, Data<'a>)), ParserError> {
-        let (rest, (packet, payload)) = ts::parse_packet(input)?;
+        let offset = self.packet_size - 188;
+        let (rest, (packet, payload)) = ts::parse_packet(&input[offset..])?;
 
         if self.is_psi(&packet) {
             let (_, section) = self.parse_psi(&packet, payload)?;
@@ -286,9 +292,13 @@ pub struct ReaderParser<T: Read> {
 
 impl<T: Read> ReaderParser<T> {
     pub fn new(reader: T) -> Self {
+        ReaderParser::with_packet_size(reader, 188)
+    }
+
+    pub fn with_packet_size(reader: T, size: usize) -> Self {
         ReaderParser {
             parser: Parser::new(),
-            buffer: ParserBuffer::new(PACKET_SIZE * 100, reader),
+            buffer: ParserBuffer::new(size * 100, reader),
             consumed: 0
         }
     }
