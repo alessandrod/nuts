@@ -62,6 +62,19 @@ impl Parser {
         }
     }
 
+    pub fn discover_packet_size(input: &[u8]) -> Option<usize> {
+        let sizes: [usize; 4] = [188, 192, 204, 208];
+        let mut parser = Parser::new();
+        for size in sizes.iter().cloned() {
+            parser.packet_size = size;
+            if parser.sync(input).is_some() {
+                return Some(size);
+            }
+        }
+
+        None
+    }
+
     fn handle_pat(&mut self, pat: &PATSection) {
         if let Some(current_pat) = &self.pat {
             /* only process PAT updates, handling version_number wrap arounds */
