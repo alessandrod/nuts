@@ -38,6 +38,16 @@ impl Default for AdaptationFieldControl {
     }
 }
 
+impl Packet {
+    pub fn adaptation_field(&self) -> Option<&AdaptationField> {
+        use AdaptationFieldControl::*;
+        match &self.adaptation_field_control {
+            AdaptationField(af) | AdaptationFieldAndPayload(af) => af.as_ref(),
+            _ => None
+        }
+    }
+}
+
 pub fn parse_packet<'a>(input: &'a [u8]) -> IResult<&[u8], (Packet, &'a [u8])> {
     use AdaptationFieldControl::*;
 
