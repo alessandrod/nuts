@@ -10,7 +10,7 @@ indexmap = "^1.0.0"
 fixedbitset = "0.1.9"
 
 [dev-dependencies]
-proptest = "0.9.1"
+proptest = "0.9.4"
 proptest-derive = { path = "../proptest/proptest-derive" }
 #proptest-derive = "0.1.0"
 
