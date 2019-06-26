@@ -122,20 +122,8 @@ impl Parser {
         &self.pmts
     }
 
-    pub fn sync<'a>(&self, mut data: &'a [u8]) -> Option<&'a [u8]> {
-        let sync_size = self.packet_size * 2;
-        let offset = self.packet_size - 188;
-        while data.len() >= sync_size {
-            if data[offset] == 0x47
-                && data[self.packet_size + offset] == 0x47
-                && data[2 * self.packet_size + offset] == 0x47 {
-                return Some(&data);
-            }
-
-            data = &data[1..];
-        }
-
-        None
+    pub fn sync<'a>(&self, data: &'a [u8]) -> Option<&'a [u8]> {
+        ts::sync(data, self.packet_size)
     }
 
     fn is_psi(&self, packet: &ts::Packet) -> bool {

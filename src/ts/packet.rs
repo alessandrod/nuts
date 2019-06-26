@@ -99,6 +99,23 @@ pub fn parse_packet<'a>(input: &'a [u8]) -> IResult<&[u8], (Packet, &'a [u8])> {
     return Ok((input, (packet, payload)));
 }
 
+pub fn sync<'a>(mut data: &'a [u8], packet_size: usize) -> Option<&'a [u8]> {
+    assert!(packet_size >= 188);
+    let sync_size = packet_size * 2;
+    let offset = packet_size - 188;
+    while data.len() >= sync_size {
+        if data[offset] == 0x47
+            && data[packet_size + offset] == 0x47
+            && data[2 * packet_size + offset] == 0x47 {
+            return Some(&data);
+        }
+
+        data = &data[1..];
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

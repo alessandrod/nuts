@@ -4,5 +4,5 @@ pub mod parser;
 pub mod psi;
 pub mod writer;
 
-pub use packet::{parse_packet, AdaptationFieldControl, Packet};
-pub use parser::{Data, Parser, ReaderParser, ParserError, ReaderParserError};
+pub use packet::{parse_packet, sync, AdaptationFieldControl, Packet};
+pub use parser::{Data, Parser, ParserError, ReaderParser, ReaderParserError};
