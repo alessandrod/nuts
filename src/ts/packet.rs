@@ -116,6 +116,17 @@ pub fn sync<'a>(mut data: &'a [u8], packet_size: usize) -> Option<&'a [u8]> {
     None
 }
 
+pub fn discover_packet_size(input: &[u8]) -> Option<usize> {
+    let sizes: [usize; 4] = [188, 192, 204, 208];
+    for size in sizes.iter().cloned() {
+        if sync(input, size).is_some() {
+            return Some(size);
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
