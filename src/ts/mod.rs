@@ -1,8 +1,11 @@
+#[doc(inline)]
 pub mod adaptation_field;
-pub mod packet;
-pub mod parser;
+mod packet;
+mod parser;
 pub mod psi;
 pub mod writer;
 
-pub use packet::{parse_packet, sync, AdaptationFieldControl, Packet};
+#[doc(inline)]
+pub use packet::{discover_packet_size, parse_packet, sync, AdaptationFieldControl, Packet};
+#[doc(inline)]
 pub use parser::{Data, Parser, ParserError, ReaderParser, ReaderParserError};
