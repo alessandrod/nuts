@@ -1,6 +1,5 @@
 use std::convert::From;
-use std::collections::{HashMap, HashSet};
-use std::iter::Iterator;
+use std::collections::HashMap;
 use std::cmp;
 use std::io::{self, Read};
 use std::fmt;
@@ -10,7 +9,6 @@ use nom::{self, Needed};
 use crate::ts;
 use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PAT, PMT};
 use crate::pes;
-use nom::IResult;
 
 use fixedbitset::FixedBitSet;
 
