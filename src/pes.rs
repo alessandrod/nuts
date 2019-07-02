@@ -1,3 +1,7 @@
+/*!
+ * Program Elementary Stream (PES) parser.
+ */
+#[doc(hidden)]
 pub mod writer;
 
 use crate::utils::parse_timestamp;
@@ -135,6 +139,7 @@ pub enum HeaderExtension2 {
     TREF(u64)
 }
 
+// PES packet header.
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(test, proptest(filter="|p| tests::packet_filter(p)"))]

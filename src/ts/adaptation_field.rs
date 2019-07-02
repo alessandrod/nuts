@@ -1,3 +1,6 @@
+/*!
+ * Adaptation field parser and types.
+ */
 use nom::{be_u8, bits, call, cond, do_parse, length_bytes, rest, take, take_bits, tap, IResult};
 use crate::utils::parse_timestamp;
 
@@ -62,6 +65,11 @@ pub struct AdaptationField {
     pub stuffing_length: u8,
 }
 
+/// Parse the adaptation field part of a packet.
+///
+/// This is the low level nom parser. You most likely want to use one of
+/// [`ReaderParser`](struct.ReaderParser.html) and [`Parser`](struct.Parser.html)
+/// instead.
 pub fn parse_adaptation_field(
     input: &[u8],
 ) -> IResult<&[u8], Option<AdaptationField>> {

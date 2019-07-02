@@ -1,8 +1,12 @@
+/*!
+ * Transport Stream parsers and utils.
+ */
 #[doc(inline)]
 pub mod adaptation_field;
 mod packet;
 mod parser;
 pub mod psi;
+#[doc(hidden)]
 pub mod writer;
 
 #[doc(inline)]

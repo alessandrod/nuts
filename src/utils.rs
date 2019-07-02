@@ -1,5 +1,6 @@
 use nom::{do_parse, tag_bits, take_bits, IResult};
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! parse_bits {
     ($input:expr, $name:ident, $type:ty, $bitcount:expr, $e:expr, $($rest:tt)+) => (
@@ -31,6 +32,7 @@ macro_rules! parse_bits {
     )
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! parse_flags {
     ($input:ident, $($flag:expr),+) => {
@@ -40,6 +42,7 @@ macro_rules! parse_flags {
     }
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! input_len {
     ($input:ident,) => {{
@@ -47,6 +50,7 @@ macro_rules! input_len {
     }};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! print {
     ($input:ident, $($args:expr),+) => (
@@ -57,6 +61,7 @@ macro_rules! print {
     )
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! slice {
     ($i:ident, $len:expr, $submac:ident!( $($args:tt)* )) => (

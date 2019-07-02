@@ -1,3 +1,7 @@
+/*!
+ * Program Specific Information (PSI) parser and types.
+ */
+#[doc(hidden)]
 pub mod writer;
 
 use std::collections::HashSet;
@@ -280,6 +284,11 @@ fn parse_program_map_section(input: &[u8]) -> IResult<&[u8], Section> {
     }
 }
 
+/// Parse the PSI content of a packet.
+///
+/// This is the low level nom parser. You most likely want to use one of
+/// [`ReaderParser`](struct.ReaderParser.html) and [`Parser`](struct.Parser.html)
+/// instead.
 pub fn parse_psi<'a>(packet: &Packet, input: &'a [u8]) -> IResult<&'a [u8], Section> {
     do_parse!(input,
         cond!(packet.payload_unit_start_indicator, length_bytes!(be_u8)) >>
