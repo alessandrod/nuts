@@ -96,59 +96,49 @@ pub struct Stream {
     pub descriptors: Vec<u8>
 }
 
-pub trait PSISections<T> {
-    fn complete(&mut self) -> Option<T>;
-}
-
-impl PSISections<PAT> for Vec<PATSection> {
-    fn complete(&mut self) -> Option<PAT> {
-        if self.len() == 0 {
-            return None;
-        }
-
-        let pmt_pids = self
-            .iter()
-            .fold(IndexMap::<u16, u16>::new(), |mut pids, section| {
-                pids.extend(section.pmt_pids.iter());
-                pids
-            });
-        let first = &self[0];
-        let pat = Some(PAT {
-            transport_stream_id: first.transport_stream_id,
-            version_number: first.version_number,
+pub fn build_pat<T: Iterator<Item = PATSection>>(mut sections: T) -> Option<PAT> {
+    let PATSection {
+        transport_stream_id,
+        version_number,
+        pmt_pids,
+        ..
+    } = sections.next()?;
+    let pat = PAT {
+        transport_stream_id,
+        version_number,
+        pmt_pids: sections.fold(pmt_pids, |mut pmt_pids, section| {
+            pmt_pids.extend(section.pmt_pids.iter());
             pmt_pids
-        });
-        self.clear();
+            }),
+    };
 
-        pat
+    Some(pat)
     }
-}
 
-impl PSISections<PMT> for Vec<PMTSection> {
-    fn complete(&mut self) -> Option<PMT> {
-        if self.len() == 0 {
-            return None;
-        }
+pub fn build_pmt<T: Iterator<Item = PMTSection>>(mut sections: T) -> Option<PMT> {
+    let PMTSection {
+        program_number,
+        version_number,
+        pcr_pid,
+        mut streams,
+        ..
+    } = sections.next()?;
+    let streams: IndexMap<u16, Stream> = streams
+        .drain(..)
+        .map(|stream| (stream.pid, stream))
+        .collect();
+    let pmt = PMT {
+        program_number,
+        version_number,
+        pcr_pid,
+        streams: sections.fold(streams, |mut streams, mut section| {
+            streams.extend(section.streams.drain(..).map(|stream| (stream.pid, stream)));
+            streams
+            }),
+    };
 
-        let streams = self
-            .iter_mut()
-            .fold(IndexMap::new(), |mut streams, section| {
-                streams.extend(section.streams.drain(..).map(|stream| (stream.pid, stream)));
-                streams
-            });
-
-        let first = &self[0];
-        let pmt = Some(PMT {
-            program_number: first.program_number,
-            version_number: first.version_number,
-            pcr_pid: first.pcr_pid,
-            streams,
-        });
-        self.clear();
-
-        pmt
+    Some(pmt)
     }
-}
 
 impl PATSection {
     pub fn is_complete(&self) -> bool {

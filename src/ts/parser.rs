@@ -7,7 +7,7 @@ use std::error::Error;
 use nom::{self, Needed};
 
 use crate::ts;
-use crate::ts::psi::{parse_psi, PATSection, PMTSection, PSISections, Section, PAT, PMT};
+use crate::ts::psi::{build_pat, build_pmt, parse_psi, PATSection, PMTSection, Section, PAT, PMT};
 use crate::pes;
 
 use fixedbitset::FixedBitSet;
@@ -124,7 +124,7 @@ impl Parser {
 
         self.pat_sections.push(pat.clone());
         if pat.is_complete() {
-            let pat = self.pat_sections.complete().unwrap();
+            let pat = build_pat(self.pat_sections.drain(..)).unwrap();
             init_psi_pids(&mut self.psi_pids);
             for pid in pat.pmt_pids.values() {
                 self.psi_pids.insert(*pid as usize);
@@ -144,7 +144,7 @@ impl Parser {
         let sections = self.pmt_sections.entry(pmt.program_number).or_insert_with(Vec::new);
         sections.push(pmt.clone());
         if pmt.is_complete() {
-            let pmt = sections.complete().unwrap();
+            let pmt = build_pmt(self.pmt_sections.get_mut(&program_number).unwrap().drain(..)).unwrap();
             self.pmts.insert(program_number, pmt);
         }
     }
