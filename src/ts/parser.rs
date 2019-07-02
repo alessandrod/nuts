@@ -369,7 +369,7 @@ impl<T: Read> ReaderParser<T> {
     ///
     /// Will fail in case of parsing errors or if reading from the inner reader
     /// fails. See also [`recover`](#method.recovner).
-    pub fn parse(&mut self) -> Result<Option<(&[u8], ts::Packet, ts::Data)>, ReaderParserError> {
+    pub fn parse(&mut self) -> Result<Option<(&[u8], (ts::Packet, ts::Data))>, ReaderParserError> {
         self.buffer.consume(self.consumed);
         self.consumed = 0;
 
@@ -377,10 +377,10 @@ impl<T: Read> ReaderParser<T> {
         if input.len() == 0 {
             return Ok(None)
         }
-        let (rest, (packet, data)) = self.parser.parse(input)?;
+        let (rest, res) = self.parser.parse(input)?;
         let size = input.len() - rest.len();
         self.consumed = size;
-        Ok(Some((&input[..size], packet, data)))
+        Ok(Some((&input[..size], res)))
     }
 
     /// Try to recover from the last parsing error.

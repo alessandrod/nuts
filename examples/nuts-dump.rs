@@ -15,7 +15,7 @@ fn main() {
     let mut n = 0;
     loop {
         match parser.parse() {
-            Ok(Some((input, packet, data))) => {
+            Ok(Some((input, (packet, data)))) => {
                 print_packet(n, input, &packet, &data);
                 n += 1;
             },
