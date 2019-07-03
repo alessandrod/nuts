@@ -25,7 +25,7 @@ pub struct Parser {
     pmt_sections: HashMap<u16, Vec<PMTSection>>,
     pmts: HashMap<u16, PMT>,
     psi_pids: FixedBitSet,
-    pub packet_size: usize
+    packet_size: usize
 }
 
 /// The error type returned by [`Parser`](struct.Parser.html).
