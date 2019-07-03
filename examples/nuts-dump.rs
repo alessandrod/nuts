@@ -20,7 +20,10 @@ fn main() {
                 n += 1;
             },
             Ok(None) => break,
-            Err(e) => if parser.recover(e).is_err() { break }
+            Err(e) => if let Err(e) = parser.recover(e) {
+                println!("error: {}", e);
+                break;
+            }
         }
     }
 }
