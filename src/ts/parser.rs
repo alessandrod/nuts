@@ -237,7 +237,7 @@ struct ParserBuffer<T: Read> {
 impl<T: Read> ParserBuffer<T> {
     fn new(size: usize, reader: T) -> Self {
         let mut buf = Vec::with_capacity(size);
-        buf.resize(size, 0xFE);
+        buf.resize(size, 0x00);
         ParserBuffer {
             inner: reader,
             buf: buf.into_boxed_slice(),
@@ -246,25 +246,28 @@ impl<T: Read> ParserBuffer<T> {
         }
     }
 
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        if self.pos >= self.cap {
-            debug_assert!(self.pos == self.cap);
-            self.cap = self.inner.read(&mut self.buf)?;
-            self.pos = 0;
+    fn len(&self) -> usize {
+        self.cap - self.pos
+    }
+
+    fn fill_buf(&mut self, min_len: usize) -> io::Result<&[u8]> {
+        debug_assert!(self.pos <= self.cap);
+        if self.len() < min_len {
+            if self.pos < self.cap {
+                self.buf.rotate_left(self.pos);
+                self.cap -= self.pos;
+                self.pos = 0;
+            } else {
+                self.pos = 0;
+                self.cap = 0;
+            }
+            self.cap += self.inner.read(&mut self.buf[self.cap..])?;
         }
         Ok(&self.buf[self.pos..self.cap])
     }
 
     fn consume(&mut self, amt: usize) {
         self.pos = cmp::min(self.pos + amt, self.cap);
-    }
-
-    fn compact(&mut self) {
-        if self.pos < self.cap {
-            self.buf.rotate_left(self.pos);
-            self.cap -= self.pos;
-            self.pos = 0;
-        }
     }
 }
 
@@ -373,7 +376,7 @@ impl<T: Read> ReaderParser<T> {
         self.buffer.consume(self.consumed);
         self.consumed = 0;
 
-        let input = self.buffer.fill_buf()?;
+        let input = self.buffer.fill_buf(self.parser.packet_size)?;
         if input.len() == 0 {
             return Ok(None)
         }
@@ -402,8 +405,7 @@ impl<T: Read> ReaderParser<T> {
 
         match error {
             Incomplete(needed) => {
-                self.buffer.compact();
-                let input = self.buffer.fill_buf()?;
+                let input = self.buffer.fill_buf(needed)?;
                 if input.len() < needed {
                     return Err(Incomplete(needed).into());
                 }
@@ -415,8 +417,7 @@ impl<T: Read> ReaderParser<T> {
                 self.recover(ParserError::LostSync.into())
             }
             LostSync => {
-                self.buffer.compact();
-                let input = self.buffer.fill_buf()?;
+                let input = self.buffer.fill_buf(self.parser.packet_size)?;
                 if let Some(next_input) = self.parser.sync(input) {
                     let skipped = input.len() - next_input.len();
                     assert!(skipped > 0, "Parser stuck at sync point. This is a bug.");
