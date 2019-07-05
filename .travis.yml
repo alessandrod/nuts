@@ -1,28 +1,30 @@
 language: rust
-rust:
-    - stable
-    - nightly
-cache: cargo
-# Dependencies of kcov, used by coverage
+sudo: required
 addons:
-  apt:
-    packages:
-      - libcurl4-openssl-dev
-      - libelf-dev
-      - libdw-dev
-      - binutils-dev
-      - cmake
-    sources:
-      - kalakris-cmake
+    apt:
+        packages:
+            - libssl-dev
+cache: cargo
+rust:
+  - stable
+  - nightly
 
-sudo: required  # https://github.com/travis-ci/travis-ci/issues/9061
-
-before_script:
-  - cargo install --force cargo-travis
-  - export PATH=$HOME/.cargo/bin:$PATH
+before_cache: |
+  if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
+    cargo install cargo-tarpaulin -f
+  fi
 
 script:
-  - cargo test
+- cargo clean
+- cargo build
+- cargo test
 
-after_success:
-  - cargo coveralls
+after_success: |
+  if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
+    # Uncomment the following line for coveralls.io
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+
+    # Uncomment the following two lines create and upload a report for codecov.io
+    # cargo tarpaulin --out Xml
+    # bash <(curl -s https://codecov.io/bash)
+  fi
