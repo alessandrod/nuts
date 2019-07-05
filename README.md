@@ -1,5 +1,5 @@
-nuts
-====
+nuts 🥜
+=======
 A Rust library to parse MPEG Transport Streams. 
 
 Early stages but the bulk of the format is implemented and parsing is pretty
@@ -9,6 +9,7 @@ enough functionality to implement fully functional parsers and demuxers.
 The API is still unstable and is going to change.
 
 [![Build Status](https://travis-ci.org/alessandrod/nuts.svg?branch=master)](https://travis-ci.org/alessandrod/nuts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # Installation
 
