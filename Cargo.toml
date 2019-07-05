@@ -1,7 +1,13 @@
 [package]
 name = "nuts"
 version = "0.1.0"
+description = "Library to parse MPEG transport streams."
 authors = ["Alessandro Decina <alessandro.d@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/alessandrod/nuts"
+keywords = ["ts", "mpegts", "transport stream"]
+categories = ["multimedia", "parser-implementations"]
 edition = "2018"
 
 [dependencies]
