@@ -8,6 +8,8 @@ enough functionality to implement fully functional parsers and demuxers.
 
 The API is still unstable and is going to change.
 
+[![Build Status](https://travis-ci.org/alessandrod/nuts.svg?branch=master)](https://travis-ci.org/alessandrod/nuts)
+
 # Installation
 
 Add `nuts` to your `Cargo.toml`:
