@@ -4,7 +4,7 @@
 #[doc(hidden)]
 pub mod writer;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use nom::{
     be_u32, be_u8, bits, bytes, call, complete, cond, do_parse, length_bytes, many0, peek, rest,
@@ -12,7 +12,6 @@ use nom::{
 };
 
 use crate::ts::packet::Packet;
-use indexmap::map::IndexMap;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -43,14 +42,14 @@ pub struct PATSection {
     pub section_number: u8,
     pub last_section_number: u8,
     #[cfg_attr(test, proptest(strategy(pid_map)))]
-    pub pmt_pids: IndexMap<u16, u16>,
+    pub pmt_pids: HashMap<u16, u16>,
 }
 
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct PAT {
     pub transport_stream_id: u16,
     pub version_number: u8,
-    pub pmt_pids: IndexMap<u16, u16>,
+    pub pmt_pids: HashMap<u16, u16>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -84,7 +83,7 @@ pub struct PMT {
     pub program_number: u16,
     pub version_number: u8,
     pub pcr_pid: u16,
-    pub streams: IndexMap<u16, Stream>,
+    pub streams: HashMap<u16, Stream>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -123,7 +122,7 @@ pub fn build_pmt<T: Iterator<Item = PMTSection>>(mut sections: T) -> Option<PMT>
         mut streams,
         ..
     } = sections.next()?;
-    let streams: IndexMap<u16, Stream> = streams
+    let streams: HashMap<u16, Stream> = streams
         .drain(..)
         .map(|stream| (stream.pid, stream))
         .collect();
@@ -295,15 +294,8 @@ pub fn parse_psi<'a>(packet: &Packet, input: &'a [u8]) -> IResult<&'a [u8], Sect
 }
 
 #[cfg(test)]
-fn pid_map() -> impl Strategy<Value = IndexMap<u16, u16>> {
-    collection::hash_map(0..2u16.pow(13), 0..2u16.pow(13), 0..10).prop_map(|map| {
-        let mut ret = IndexMap::new();
-        for (k, v) in map {
-            ret.insert(k, v);
-        }
-
-        ret
-    })
+fn pid_map() -> impl Strategy<Value = HashMap<u16, u16>> {
+    collection::hash_map(0..2u16.pow(13), 0..2u16.pow(13), 0..10)
 }
 
 #[cfg(test)]

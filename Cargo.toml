@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 nom = "4.2.0"
-indexmap = "^1.0.0"
 fixedbitset = "0.1.9"
 
 [dev-dependencies]
