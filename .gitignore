@@ -1,4 +1,6 @@
 /target
 **/*.rs.bk
 Cargo.lock
-*.ts
+samples
+rls*.log
+.vscode
